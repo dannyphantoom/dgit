@@ -87,16 +87,17 @@ void Repository::commit(const std::string& message, const Person& author, const 
 
     // Create commit object
     auto commit = std::make_unique<Commit>(tree_id, parents, author, committer, message);
+    ObjectId commit_id = commit->id();
     objects_->store(std::move(commit));
 
     // Update HEAD
-    refs_->update_ref("refs/heads/master", commit->id());
+    refs_->update_ref("refs/heads/master", commit_id);
 
     // Clear index
     index_->clear();
     index_->save();
 
-    std::cout << "Created commit " << commit->id().substr(0, 7) << "\n";
+    std::cout << "Created commit " << commit_id.substr(0, 7) << "\n";
 }
 
 ObjectId Repository::write_blob(const std::string& filepath) {
@@ -112,9 +113,10 @@ ObjectId Repository::write_blob(const std::string& filepath) {
                         std::istreambuf_iterator<char>());
 
     blob = std::make_unique<Blob>(content);
+    ObjectId blob_id = blob->id();
     objects_->store(std::move(blob));
 
-    return blob->id();
+    return blob_id;
 }
 
 ObjectId Repository::write_tree(const std::string& directory) {
@@ -151,8 +153,9 @@ ObjectId Repository::write_tree_recursive(const std::string& directory, const st
         }
     }
 
+    ObjectId tree_id = tree->id();
     objects_->store(std::move(tree));
-    return tree->id();
+    return tree_id;
 }
 
 std::string Repository::read_file(const ObjectId& blob_id, const std::string& filepath) {

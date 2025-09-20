@@ -250,7 +250,9 @@ void GitProtocol::write_packet_data(const std::vector<uint8_t>& data) {
 
 // Remote implementation
 Remote::Remote(Repository& repo, const std::string& name)
-    : repo_(repo), name_(name), config_(name, "") {}
+    : repo_(repo), name_(name) {
+    config_.url = "";
+}
 
 void Remote::set_url(const std::string& url) {
     config_.url = url;

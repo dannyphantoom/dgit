@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <zlib.h>
+#include <cstring>
 
 namespace fs = std::filesystem;
 namespace dgit {
@@ -124,7 +125,7 @@ std::string ObjectDatabase::read_object(const ObjectId& id) {
 // Compression utilities
 std::string compress_data(const std::string& data) {
     z_stream zs;
-    memset(&zs, 0, sizeof(zs));
+    std::memset(&zs, 0, sizeof(zs));
 
     if (deflateInit(&zs, Z_DEFAULT_COMPRESSION) != Z_OK) {
         throw GitException("Failed to initialize zlib compression");
@@ -159,7 +160,7 @@ std::string compress_data(const std::string& data) {
 
 std::string decompress_data(const std::string& compressed_data) {
     z_stream zs;
-    memset(&zs, 0, sizeof(zs));
+    std::memset(&zs, 0, sizeof(zs));
 
     if (inflateInit(&zs) != Z_OK) {
         throw GitException("Failed to initialize zlib decompression");

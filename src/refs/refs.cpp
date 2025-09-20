@@ -56,7 +56,12 @@ void Refs::update_ref(const RefName& name, const ObjectId& target) {
         throw GitException("Ref does not exist: " + name);
     }
 
-    ObjectId old_target = resolve_ref(name);
+    ObjectId old_target;
+    try {
+        old_target = resolve_ref(name);
+    } catch (...) {
+        old_target = ""; // allow creating first commit when ref is empty/unresolved
+    }
     write_ref_file(path, target);
 
     // Update cache
@@ -304,6 +309,9 @@ std::optional<ObjectId> Refs::read_ref_file(const std::string& path) {
     }
 
     // Validate SHA-1
+    if (line.empty()) {
+        return std::nullopt;
+    }
     if (line.length() == 40 && std::regex_match(line, std::regex("^[0-9a-fA-F]+$"))) {
         return line;
     }

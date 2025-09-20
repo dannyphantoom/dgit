@@ -102,7 +102,11 @@ void Tree::add_entry(FileMode mode, const ObjectId& id, const std::string& name)
     std::ostringstream oss;
     for (const auto& entry : entries_) {
         oss << static_cast<int>(entry.mode) << " " << entry.name << "\0";
-        oss.write(id.c_str(), 20);
+        // write binary 20-byte id from hex
+        for (size_t i = 0; i < 20; ++i) {
+            uint8_t byte = std::stoi(entry.id.substr(i * 2, 2), nullptr, 16);
+            oss.put(static_cast<char>(byte));
+        }
     }
     data_ = oss.str();
     recompute_id();

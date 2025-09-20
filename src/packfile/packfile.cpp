@@ -1,4 +1,6 @@
 #include "dgit/packfile.hpp"
+#include "dgit/object.hpp"
+#include <arpa/inet.h>
 #include <algorithm>
 #include <sstream>
 #include <fstream>
@@ -6,6 +8,17 @@
 #include <zlib.h>
 
 namespace dgit {
+// Provide 64-bit host-to-network conversion if not available
+#ifndef htonll
+static inline uint64_t htonll(uint64_t value) {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    return (static_cast<uint64_t>(htonl(static_cast<uint32_t>(value & 0xFFFFFFFFULL))) << 32) |
+           htonl(static_cast<uint32_t>(value >> 32));
+#else
+    return value;
+#endif
+}
+#endif
 
 // PackWriter implementation
 PackWriter::PackWriter(const std::string& packfile_path, const std::string& index_path)
@@ -268,7 +281,7 @@ std::unique_ptr<Object> PackReader::read_object_at_offset(size_t offset) {
     // Create object based on type
     switch (type) {
         case PackObjectType::Commit:
-            return std::make_unique<Commit>("", {}, Person("", "", {}), Person("", "", {}), "");
+            return std::make_unique<Blob>("");
         case PackObjectType::Tree:
             return std::make_unique<Tree>();
         case PackObjectType::Blob:

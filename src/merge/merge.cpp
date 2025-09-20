@@ -3,6 +3,9 @@
 #include <sstream>
 #include <fstream>
 #include <regex>
+#include <set>
+#include <iostream>
+#include "dgit/commands.hpp"
 
 namespace dgit {
 
@@ -151,9 +154,9 @@ bool ThreeWayMerge::can_handle_file(const std::string& path) const {
            path.find(".h") != std::string::npos;
 }
 
-FileStatus ThreeWayMerge::get_file_status(const std::string& path) const {
+ThreeWayMerge::FileStatus ThreeWayMerge::get_file_status(const std::string& path) const {
     // Simplified file status
-    return FileStatus::Modified;
+    return ThreeWayMerge::FileStatus::Modified;
 }
 
 // Manual conflict resolver
@@ -321,11 +324,11 @@ MergeResult MergeCommand::perform_merge(const std::string& branch_name) {
     auto repo = Repository::open(".");
 
     // Get current branch and commit
-    std::string our_branch = repo.refs().get_head_branch().value_or("master");
-    std::string our_commit = repo.refs().get_head();
+    std::string our_branch = repo->refs().get_head_branch().value_or("master");
+    std::string our_commit = repo->refs().get_head();
 
     // Get their commit
-    auto their_ref = repo.refs().read_ref("refs/heads/" + branch_name);
+    auto their_ref = repo->refs().read_ref("refs/heads/" + branch_name);
     if (!their_ref) {
         throw GitException("Branch not found: " + branch_name);
     }
@@ -336,13 +339,13 @@ MergeResult MergeCommand::perform_merge(const std::string& branch_name) {
     }
 
     // Find merge base
-    auto base_commit = merge::find_merge_base(repo, our_commit, their_commit);
+    auto base_commit = merge::find_merge_base(*repo, our_commit, their_commit);
     if (base_commit.empty()) {
         throw GitException("No common ancestor found");
     }
 
     // Perform the merge
-    ThreeWayMerge merger(repo);
+    ThreeWayMerge merger(*repo);
     return merger.merge(base_commit, our_commit, their_commit);
 }
 

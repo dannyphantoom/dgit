@@ -5,6 +5,10 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include "dgit/network.hpp"
+#include "dgit/merge.hpp"
+#include "dgit/packfile.hpp"
+#include "dgit/sha1.hpp"
 
 namespace dgit {
 
@@ -33,6 +37,12 @@ CommandResult InitCommand::execute(const std::vector<std::string>& args) {
             config_file << "\trepositoryformatversion = 0\n";
             config_file << "\tfilemode = false\n";
             config_file << "\tbare = false\n";
+        }
+
+        // Create initial master ref file
+        std::ofstream master_ref(git_dir + "/refs/heads/master");
+        if (master_ref) {
+            master_ref << "";
         }
 
         return {0, "Initialized empty Git repository in " + git_dir + "\n", ""};
@@ -281,13 +291,13 @@ CommandResult RemoteCommand::execute(const std::vector<std::string>& args) {
 
         if (args.empty()) {
             // List remotes
-            auto remotes = repo.config().get_sections();
+            auto remotes = repo->config().get_sections();
             std::ostringstream oss;
 
             for (const auto& remote : remotes) {
                 if (remote.substr(0, 7) == "remote ") {
                     std::string remote_name = remote.substr(7);
-                    std::string url = repo.config().get_string("remote", remote_name, "");
+                    std::string url = repo->config().get_string("remote", remote_name, "");
                     oss << remote_name << "\t" << url << "\n";
                 }
             }
@@ -301,8 +311,8 @@ CommandResult RemoteCommand::execute(const std::vector<std::string>& args) {
             std::string name = args[1];
             std::string url = args[2];
 
-            repo.config().set_value("remote", name, url);
-            repo.config().save();
+            repo->config().set_value("remote", name, url);
+            repo->config().save();
 
             std::ostringstream oss;
             oss << "Remote '" << name << "' added: " << url << "\n";
@@ -313,8 +323,8 @@ CommandResult RemoteCommand::execute(const std::vector<std::string>& args) {
             std::string name = args[1];
 
             // Remove remote config
-            repo.config().unset_value("remote", name);
-            repo.config().save();
+            repo->config().unset_value("remote", name);
+            repo->config().save();
 
             std::ostringstream oss;
             oss << "Remote '" << name << "' removed\n";
@@ -351,13 +361,13 @@ CommandResult PushCommand::execute(const std::vector<std::string>& args) {
         }
 
         // Get remote URL
-        std::string remote_url = repo.config().get_string("remote", remote_name, "");
+        std::string remote_url = repo->config().get_string("remote", remote_name, "");
         if (remote_url.empty()) {
             return {1, "", "Error: Remote '" + remote_name + "' not found\n"};
         }
 
         // Create remote and push
-        Remote remote(repo, remote_name);
+        Remote remote(*repo, remote_name);
         remote.set_url(remote_url);
 
         if (remote.push(branch_name, force)) {
@@ -392,13 +402,13 @@ CommandResult PullCommand::execute(const std::vector<std::string>& args) {
         }
 
         // Get remote URL
-        std::string remote_url = repo.config().get_string("remote", remote_name, "");
+        std::string remote_url = repo->config().get_string("remote", remote_name, "");
         if (remote_url.empty()) {
             return {1, "", "Error: Remote '" + remote_name + "' not found\n"};
         }
 
         // Create remote and fetch
-        Remote remote(repo, remote_name);
+        Remote remote(*repo, remote_name);
         remote.set_url(remote_url);
 
         if (remote.fetch(branch_name)) {
@@ -427,13 +437,13 @@ CommandResult FetchCommand::execute(const std::vector<std::string>& args) {
         }
 
         // Get remote URL
-        std::string remote_url = repo.config().get_string("remote", remote_name, "");
+        std::string remote_url = repo->config().get_string("remote", remote_name, "");
         if (remote_url.empty()) {
             return {1, "", "Error: Remote '" + remote_name + "' not found\n"};
         }
 
         // Create remote and fetch
-        Remote remote(repo, remote_name);
+        Remote remote(*repo, remote_name);
         remote.set_url(remote_url);
 
         if (remote.fetch(branch_name)) {
@@ -465,11 +475,11 @@ CommandResult CloneCommand::execute(const std::vector<std::string>& args) {
         auto repo = Repository::create(dest_path);
 
         // Set up remote
-        repo.config().set_value("remote", "origin", source_url);
-        repo.config().save();
+        repo->config().set_value("remote", "origin", source_url);
+        repo->config().save();
 
         // Create remote object and fetch
-        Remote remote(repo, "origin");
+        Remote remote(*repo, "origin");
         remote.set_url(source_url);
 
         if (remote.fetch("master")) {
@@ -484,77 +494,7 @@ CommandResult CloneCommand::execute(const std::vector<std::string>& args) {
     }
 }
 
-// MergeCommand implementation
-CommandResult MergeCommand::execute(const std::vector<std::string>& args) {
-    try {
-        auto repo = Repository::open(".");
-
-        std::string branch_name = "master";
-        bool no_commit = false;
-        bool no_ff = false;
-
-        // Parse arguments
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (args[i] == "--no-commit") {
-                no_commit = true;
-            } else if (args[i] == "--no-ff") {
-                no_ff = true;
-            } else if (args[i] != "--abort" && args[i] != "--continue") {
-                branch_name = args[i];
-            }
-        }
-
-        // Get current branch and commit
-        auto current_branch = repo.refs().get_head_branch();
-        if (!current_branch) {
-            return {1, "", "Error: Not on a branch\n"};
-        }
-
-        std::string our_commit = repo.refs().get_head();
-
-        // Get their commit
-        auto their_ref = repo.refs().read_ref("refs/heads/" + branch_name);
-        if (!their_ref) {
-            return {1, "", "Error: Branch '" + branch_name + "' not found\n"};
-        }
-
-        std::string their_commit = *their_ref;
-
-        if (our_commit == their_commit) {
-            std::ostringstream oss;
-            oss << "Already up to date\n";
-            return {0, oss.str(), ""};
-        }
-
-        // Perform the merge
-        ThreeWayMerge merger(repo);
-        auto result = merger.merge(our_commit, our_commit, their_commit);
-
-        std::ostringstream oss;
-        switch (result.status) {
-            case MergeStatus::Success:
-                oss << "Merge successful\n";
-                break;
-            case MergeStatus::Conflicts:
-                oss << "Merge conflicts detected in:\n";
-                for (const auto& conflict : result.conflicts) {
-                    oss << "  " << conflict.path << "\n";
-                }
-                oss << "Please resolve conflicts and run 'dgit commit'\n";
-                break;
-            case MergeStatus::AlreadyUpToDate:
-                oss << "Already up to date\n";
-                break;
-            case MergeStatus::Failed:
-                oss << "Merge failed: " << result.message << "\n";
-                break;
-        }
-
-        return {result.status == MergeStatus::Success ? 0 : 1, oss.str(), ""};
-    } catch (const GitException& e) {
-        return {1, "", "Error: " + std::string(e.what()) + "\n"};
-    }
-}
+// MergeCommand is implemented in src/merge/merge.cpp
 
 // PackCommand implementation
 CommandResult PackCommand::execute(const std::vector<std::string>& args) {
@@ -565,7 +505,7 @@ CommandResult PackCommand::execute(const std::vector<std::string>& args) {
         oss << "Packing objects...\n";
 
         // Create packfile
-        std::string packfile_path = repo.git_dir() + "/objects/pack/pack-" +
+        std::string packfile_path = repo->git_dir() + "/objects/pack/pack-" +
                                    SHA1::hash("packfile") + ".pack";
         std::string index_path = packfile_path.substr(0, packfile_path.length() - 4) + "idx";
 
@@ -592,7 +532,7 @@ CommandResult RepackCommand::execute(const std::vector<std::string>& args) {
         std::ostringstream oss;
         oss << "Repacking repository...\n";
 
-        if (packfile::repack_repository(repo)) {
+        if (packfile::repack_repository(*repo)) {
             oss << "Repository repacked successfully\n";
             return {0, oss.str(), ""};
         } else {
@@ -611,8 +551,8 @@ CommandResult GarbageCollectCommand::execute(const std::vector<std::string>& arg
         std::ostringstream oss;
         oss << "Running garbage collection...\n";
 
-        if (packfile::garbage_collect(repo)) {
-            auto stats = packfile::get_packfile_stats(repo);
+        if (packfile::garbage_collect(*repo)) {
+            auto stats = packfile::get_packfile_stats(*repo);
             oss << "Garbage collection completed\n";
             oss << "Objects: " << stats.object_count << "\n";
             oss << "Packfiles: " << stats.packfiles.size() << "\n";

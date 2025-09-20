@@ -3,12 +3,15 @@
 
 CXX = clang++
 CXXFLAGS = -std=c++17 -Wall -Wextra -Wpedantic -Iinclude -Isrc
-LDFLAGS = -lstdc++ -lboost_filesystem -lboost_system -lcrypto -lssl
+LDFLAGS = -lstdc++ -lz -lcurl -lssh
 
 # Source files
 CORE_SOURCES = src/core/sha1.cpp src/core/config.cpp src/core/index.cpp src/core/repository.cpp
 OBJECT_SOURCES = src/objects/object.cpp src/objects/object_database.cpp
 REF_SOURCES = src/refs/refs.cpp
+NETWORK_SOURCES = src/network/network.cpp
+PACK_SOURCES = src/packfile/packfile.cpp
+MERGE_SOURCES = src/merge/merge.cpp
 COMMAND_SOURCES = src/commands/commands.cpp src/commands/cli.cpp
 MAIN_SOURCE = src/main.cpp
 
@@ -19,7 +22,11 @@ REF_OBJECTS = $(patsubst src/%.cpp, build/%.o, $(REF_SOURCES))
 COMMAND_OBJECTS = $(patsubst src/%.cpp, build/%.o, $(COMMAND_SOURCES))
 MAIN_OBJECT = $(patsubst src/%.cpp, build/%.o, $(MAIN_SOURCE))
 
-OBJECTS = $(CORE_OBJECTS) $(OBJECT_OBJECTS) $(REF_OBJECTS) $(COMMAND_OBJECTS) $(MAIN_OBJECT)
+NETWORK_OBJECTS = $(patsubst src/%.cpp, build/%.o, $(NETWORK_SOURCES))
+PACK_OBJECTS = $(patsubst src/%.cpp, build/%.o, $(PACK_SOURCES))
+MERGE_OBJECTS = $(patsubst src/%.cpp, build/%.o, $(MERGE_SOURCES))
+
+OBJECTS = $(CORE_OBJECTS) $(OBJECT_OBJECTS) $(REF_OBJECTS) $(NETWORK_OBJECTS) $(PACK_OBJECTS) $(MERGE_OBJECTS) $(COMMAND_OBJECTS) $(MAIN_OBJECT)
 TARGET = build/bin/dgit
 
 # Default target
